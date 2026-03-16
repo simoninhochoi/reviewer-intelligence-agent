@@ -194,6 +194,20 @@ class ReviewerIntelligencePipeline:
             papers_data=papers_data,
         )
 
+        # DB에 리뷰어 + 논문 저장
+        reviewer_id = author.author_id
+        self.store.upsert_reviewer({
+            "reviewer_id": reviewer_id,
+            "name": reviewer_name,
+            "s2_author_id": author.author_id,
+            "affiliations": author.affiliations or [],
+            "h_index": author.h_index,
+            "profile_json": profile_result["profile"],
+        })
+        for p in papers_data:
+            p_copy = {**p, "reviewer_id": reviewer_id}
+            self.store.upsert_paper(p_copy)
+
         return {
             "profile": profile_result["profile"],
             "papers": papers_data,

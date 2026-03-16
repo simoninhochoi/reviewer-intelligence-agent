@@ -417,15 +417,50 @@ def page_documents():
     ])
 
     from src.vectordb.chroma_store import ChromaStore
-    store = ChromaStore()
+    from src.acquisition.paper_store import PaperStore
+
+    chroma = ChromaStore()
+    paper_store = PaperStore()
+
+    # 프로파일링된 리뷰어 목록 로드
+    existing_reviewers = paper_store.all_reviewers()
+    reviewer_names = [r["name"] for r in existing_reviewers if r.get("name")]
 
     # ── 업로드 탭 ──
     with tab_upload:
-        reviewer_name = st.text_input(
-            "리뷰어 이름",
-            placeholder="예: Christian Reus-Smit",
-            key="doc_reviewer",
-        )
+        if reviewer_names:
+            select_mode = st.radio(
+                "리뷰어 선택 방식",
+                ["기존 리뷰어 선택", "새 리뷰어 직접 입력"],
+                horizontal=True,
+                key="reviewer_select_mode",
+            )
+            if select_mode == "기존 리뷰어 선택":
+                reviewer_name = st.selectbox(
+                    "프로파일링된 리뷰어",
+                    reviewer_names,
+                    key="doc_reviewer_select",
+                )
+                # 선택된 리뷰어의 현재 프로필 요약 표시
+                selected = next(
+                    (r for r in existing_reviewers if r["name"] == reviewer_name), None
+                )
+                if selected and selected.get("profile_json"):
+                    with st.expander("현재 프로필 미리보기", expanded=False):
+                        st.markdown(selected["profile_json"][:1000] + "...")
+            else:
+                reviewer_name = st.text_input(
+                    "리뷰어 이름",
+                    placeholder="예: Christian Reus-Smit",
+                    key="doc_reviewer_new",
+                )
+        else:
+            st.info("프로파일링된 리뷰어가 없습니다. '리뷰어 프로파일링' 메뉴에서 먼저 프로파일을 생성하세요.")
+            reviewer_name = st.text_input(
+                "리뷰어 이름",
+                placeholder="예: Christian Reus-Smit",
+                key="doc_reviewer",
+            )
 
         upload_method = st.radio(
             "업로드 방식",
@@ -448,6 +483,7 @@ def page_documents():
                 doc_year = st.text_input("출판 연도 (선택)", key="doc_year")
 
             if st.button("벡터 DB에 저장", type="primary", disabled=not (reviewer_name and uploaded_files)):
+                total_chunks = 0
                 for uploaded_file in uploaded_files:
                     file_path = save_uploaded_file(uploaded_file)
                     metadata = {"title": doc_title or uploaded_file.name}
@@ -455,12 +491,17 @@ def page_documents():
                         metadata["year"] = doc_year
 
                     with st.spinner(f"{uploaded_file.name} 처리 중..."):
-                        chunk_count = store.add_document(
+                        chunk_count = chroma.add_document(
                             reviewer_name=reviewer_name,
                             file_path=file_path,
                             metadata=metadata,
                         )
+                    total_chunks += chunk_count
                     st.success(f"✅ {uploaded_file.name} → {chunk_count}개 청크 저장 완료")
+
+                if total_chunks > 0:
+                    stats = chroma.get_stats(reviewer_name)
+                    st.info(f"📊 {reviewer_name} 컬렉션: 총 {stats['total_chunks']}개 청크 보유")
 
         else:  # 텍스트 직접 입력
             text_input = st.text_area(
@@ -476,20 +517,33 @@ def page_documents():
                     metadata["title"] = text_title
 
                 with st.spinner("텍스트 처리 중..."):
-                    chunk_count = store.add_text(
+                    chunk_count = chroma.add_text(
                         reviewer_name=reviewer_name,
                         text=text_input,
                         metadata=metadata,
                     )
                 st.success(f"✅ {chunk_count}개 청크 저장 완료")
 
+                if chunk_count > 0:
+                    stats = chroma.get_stats(reviewer_name)
+                    st.info(f"📊 {reviewer_name} 컬렉션: 총 {stats['total_chunks']}개 청크 보유")
+
     # ── 검색 탭 ──
     with tab_search:
-        search_reviewer = st.text_input(
-            "리뷰어 이름",
-            placeholder="예: Christian Reus-Smit",
-            key="search_reviewer",
-        )
+        # 벡터 DB에 문서가 있는 리뷰어 목록
+        chroma_reviewers = chroma.list_reviewers()
+        if chroma_reviewers:
+            search_reviewer = st.selectbox(
+                "리뷰어 선택",
+                chroma_reviewers,
+                key="search_reviewer_select",
+            )
+        else:
+            search_reviewer = st.text_input(
+                "리뷰어 이름",
+                placeholder="예: Christian Reus-Smit",
+                key="search_reviewer",
+            )
         search_query = st.text_input(
             "검색 쿼리",
             placeholder="예: constructivism in international relations",
@@ -498,7 +552,7 @@ def page_documents():
 
         if st.button("검색", type="primary", disabled=not (search_reviewer and search_query)):
             with st.spinner("검색 중..."):
-                results = store.search(
+                results = chroma.search(
                     reviewer_name=search_reviewer,
                     query=search_query,
                     top_k=top_k,
@@ -522,12 +576,12 @@ def page_documents():
 
     # ── 관리 탭 ──
     with tab_manage:
-        reviewers = store.list_reviewers()
+        reviewers = chroma.list_reviewers()
 
         if reviewers:
             st.subheader(f"등록된 리뷰어 ({len(reviewers)}명)")
             for rev in reviewers:
-                stats = store.get_stats(rev)
+                stats = chroma.get_stats(rev)
                 col1, col2, col3 = st.columns([3, 2, 1])
                 with col1:
                     st.write(f"**{rev}**")
@@ -535,7 +589,7 @@ def page_documents():
                     st.write(f"{stats['total_chunks']}개 청크")
                 with col3:
                     if st.button("삭제", key=f"del_{rev}"):
-                        store.delete_reviewer(rev)
+                        chroma.delete_reviewer(rev)
                         st.success(f"{rev} 컬렉션 삭제됨")
                         st.rerun()
         else:
