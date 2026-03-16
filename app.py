@@ -544,9 +544,15 @@ def page_pipeline():
                     "section_count": 1,
                 }
             else:
-                review_result = pipeline._step_simulation(
-                    profile_result["profile"], manuscript_text
+                # 웹 UI에서는 Batch 대신 단일 호출 (타임아웃 방지)
+                sim_result = pipeline.simulator.run(
+                    reviewer_profile=profile_result["profile"],
+                    manuscript_text=manuscript_text[:15000],  # 토큰 한도 고려
                 )
+                review_result = {
+                    "full_review": sim_result["review"],
+                    "section_count": 1,
+                }
 
             # Step 4: 수정 전략
             status_text.text("Step 4/5: 수정 전략 수립...")
@@ -554,7 +560,7 @@ def page_pipeline():
             strategy_result = pipeline.strategist.run(
                 reviewer_profile=profile_result["profile"],
                 simulated_review=review_result["full_review"],
-                manuscript_text=manuscript_text,
+                manuscript_text=manuscript_text[:15000],
                 author_intent=author_intent,
             )
 
@@ -587,10 +593,10 @@ def page_pipeline():
             ])
 
             with tab1:
-                st.markdown(profile_result["profile"])
+                render_profile(profile_result["profile"])
 
             with tab2:
-                gap_text = gap_result.get("analysis", gap_result.get("raw_response", str(gap_result)))
+                gap_text = gap_result.get("gap_analysis", gap_result.get("analysis", str(gap_result)))
                 st.markdown(gap_text)
 
             with tab3:
