@@ -395,11 +395,14 @@ def page_profile():
                             )
 
                 # 벡터 DB 통계
-                from src.vectordb.chroma_store import ChromaStore
-                chroma = ChromaStore()
-                stats = chroma.get_stats(selected_name)
-                if stats["total_chunks"] > 0:
-                    st.info(f"📚 업로드된 문서: {stats['total_chunks']}개 청크 (벡터 DB)")
+                try:
+                    from src.vectordb.chroma_store import ChromaStore
+                    chroma = ChromaStore()
+                    stats = chroma.get_stats(selected_name)
+                    if stats["total_chunks"] > 0:
+                        st.info(f"📚 업로드된 문서: {stats['total_chunks']}개 청크 (벡터 DB)")
+                except Exception:
+                    pass  # ChromaDB 미초기화 시 무시
         else:
             st.info("프로파일링된 리뷰어가 없습니다. '새 프로파일 생성' 탭에서 시작하세요.")
 
@@ -445,6 +448,8 @@ def page_profile():
 
                 except Exception as e:
                     st.error(f"오류 발생: {e}")
+                    import traceback
+                    st.code(traceback.format_exc())
 
 
 def page_pipeline():
