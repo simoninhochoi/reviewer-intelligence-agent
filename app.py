@@ -544,10 +544,9 @@ def page_pipeline():
                     "section_count": 1,
                 }
             else:
-                # 웹 UI에서는 Batch 대신 단일 호출 (타임아웃 방지)
                 sim_result = pipeline.simulator.run(
                     reviewer_profile=profile_result["profile"],
-                    manuscript_text=manuscript_text[:15000],  # 토큰 한도 고려
+                    manuscript_text=manuscript_text[:15000],
                 )
                 review_result = {
                     "full_review": sim_result["review"],
@@ -579,57 +578,73 @@ def page_pipeline():
             from src.optimization.cost_tracker import CostTracker
             cost_summary = CostTracker.get_summary()
 
-            # ── 결과 표시 ──
-            st.success(
-                f"파이프라인 완료! 총 비용: ${cost_summary.get('total_cost', 0):.4f}"
-            )
-
-            tab1, tab2, tab3, tab4, tab5 = st.tabs([
-                "👤 프로필",
-                "🔍 갭 분석",
-                "📝 시뮬레이션",
-                "🎯 수정 전략",
-                "✏️ 수정안",
-            ])
-
-            with tab1:
-                render_profile(profile_result["profile"])
-
-            with tab2:
-                gap_text = gap_result.get("gap_analysis", gap_result.get("analysis", str(gap_result)))
-                st.markdown(gap_text)
-
-            with tab3:
-                st.markdown(review_result["full_review"])
-
-            with tab4:
-                strat_text = strategy_result.get("strategy", strategy_result.get("raw_response", str(strategy_result)))
-                st.markdown(strat_text)
-
-            with tab5:
-                rev_text = revisions.get("revision", revisions.get("status", str(revisions)))
-                st.markdown(rev_text)
-
-            # JSON 다운로드
-            all_results = {
+            # 결과를 session_state에 저장 (페이지 rerun 시에도 유지)
+            st.session_state["pipeline_results"] = {
                 "profile": profile_result,
                 "gap_analysis": gap_result,
                 "simulated_review": review_result,
                 "strategy": strategy_result,
                 "revisions": revisions,
                 "cost_summary": cost_summary,
+                "reviewer_name": reviewer_name,
             }
-            st.download_button(
-                "📥 전체 결과 JSON 다운로드",
-                data=json.dumps(all_results, indent=2, default=str, ensure_ascii=False),
-                file_name=f"ria_{reviewer_name.replace(' ', '_')}_results.json",
-                mime="application/json",
-            )
 
         except Exception as e:
             st.error(f"파이프라인 실행 중 오류: {e}")
             import traceback
             st.code(traceback.format_exc())
+
+    # ── session_state에 결과가 있으면 항상 표시 ──
+    if "pipeline_results" in st.session_state:
+        results = st.session_state["pipeline_results"]
+        cost_summary = results["cost_summary"]
+        rname = results["reviewer_name"]
+
+        st.success(
+            f"파이프라인 완료! 총 비용: ${cost_summary.get('total_cost', 0):.4f}"
+        )
+
+        tab1, tab2, tab3, tab4, tab5 = st.tabs([
+            "👤 프로필",
+            "🔍 갭 분석",
+            "📝 시뮬레이션",
+            "🎯 수정 전략",
+            "✏️ 수정안",
+        ])
+
+        with tab1:
+            render_profile(results["profile"]["profile"])
+
+        with tab2:
+            gap = results["gap_analysis"]
+            gap_text = gap.get("gap_analysis", gap.get("analysis", str(gap)))
+            st.markdown(gap_text)
+
+        with tab3:
+            st.markdown(results["simulated_review"]["full_review"])
+
+        with tab4:
+            strat = results["strategy"]
+            strat_text = strat.get("strategy", strat.get("raw_response", str(strat)))
+            st.markdown(strat_text)
+
+        with tab5:
+            rev = results["revisions"]
+            rev_text = rev.get("revision", rev.get("status", str(rev)))
+            st.markdown(rev_text)
+
+        # JSON 다운로드
+        st.download_button(
+            "📥 전체 결과 JSON 다운로드",
+            data=json.dumps(results, indent=2, default=str, ensure_ascii=False),
+            file_name=f"ria_{rname.replace(' ', '_')}_results.json",
+            mime="application/json",
+        )
+
+        # 결과 초기화 버튼
+        if st.button("🗑️ 결과 초기화"):
+            del st.session_state["pipeline_results"]
+            st.rerun()
 
 
 def page_cost():
