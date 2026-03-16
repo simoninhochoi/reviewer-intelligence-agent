@@ -17,11 +17,7 @@ COPY . .
 # 데이터 디렉토리 생성
 RUN mkdir -p data/papers data/profiles data/outputs data/chroma_db
 
-# Streamlit 설정
-RUN mkdir -p ~/.streamlit
-RUN echo '[server]\nheadless = true\nport = $PORT\naddress = "0.0.0.0"\nenableCORS = false\nenableXsrfProtection = false\n\n[browser]\ngatherUsageStats = false' > ~/.streamlit/config.toml
-
 EXPOSE 8501
 
-# Railway는 PORT 환경변수를 제공함
+# Railway는 PORT 환경변수를 제공함 — config.toml은 프로젝트 .streamlit/에서 복사됨
 CMD streamlit run app.py --server.port=${PORT:-8501} --server.address=0.0.0.0
