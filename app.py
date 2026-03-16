@@ -22,28 +22,41 @@ st.set_page_config(
 # Sidebar
 # ──────────────────────────────────────────────
 
+import os
+from dotenv import load_dotenv
+
+load_dotenv()  # .env 파일에서 환경변수 로드
+
+_has_anthropic_key = bool(os.getenv("ANTHROPIC_API_KEY", ""))
+_has_s2_key = bool(os.getenv("S2_API_KEY", ""))
+
 with st.sidebar:
     st.title("🔬 RIA")
     st.caption("Reviewer Intelligence Agent")
     st.divider()
 
-    api_key = st.text_input(
-        "Anthropic API Key",
-        type="password",
-        help="Claude API 키를 입력하세요.",
-    )
-    if api_key:
-        import os
-        os.environ["ANTHROPIC_API_KEY"] = api_key
+    # 환경변수에 키가 없을 때만 입력창 표시
+    if _has_anthropic_key:
+        st.success("Anthropic API Key 설정됨", icon="✅")
+    else:
+        api_key = st.text_input(
+            "Anthropic API Key",
+            type="password",
+            help="Claude API 키를 입력하세요.",
+        )
+        if api_key:
+            os.environ["ANTHROPIC_API_KEY"] = api_key
 
-    s2_key = st.text_input(
-        "Semantic Scholar API Key (선택)",
-        type="password",
-        help="S2 API 키가 있으면 입력하세요. 없어도 동작합니다.",
-    )
-    if s2_key:
-        import os
-        os.environ["S2_API_KEY"] = s2_key
+    if _has_s2_key:
+        st.success("S2 API Key 설정됨", icon="✅")
+    else:
+        s2_key = st.text_input(
+            "Semantic Scholar API Key (선택)",
+            type="password",
+            help="S2 API 키가 있으면 입력하세요. 없어도 동작합니다.",
+        )
+        if s2_key:
+            os.environ["S2_API_KEY"] = s2_key
 
     st.divider()
     page = st.radio(

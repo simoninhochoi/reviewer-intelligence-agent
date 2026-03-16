@@ -13,8 +13,8 @@ class PaperStore:
     def __init__(self, db_path: Path | None = None):
         self.db_path = db_path or settings.papers_dir / "papers.db"
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        # Python 3.13+ sqlite3 autocommit 호환성을 위해 명시적 autocommit 사용
-        conn = sqlite3.connect(str(self.db_path), autocommit=True)
+        # isolation_level=None → autocommit 모드 (모든 Python 버전 호환)
+        conn = sqlite3.connect(str(self.db_path), isolation_level=None)
         self.db = sqlite_utils.Database(conn)
         self._init_tables()
 
