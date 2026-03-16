@@ -48,8 +48,13 @@ class PaperStore:
 
     def upsert_paper(self, paper_data: dict):
         """논문 메타데이터 upsert"""
-        self.db["papers"].upsert(paper_data, pk="paper_id")
-        logger.debug(f"논문 저장: {paper_data.get('title', '')[:50]}")
+        data = dict(paper_data)
+        # 리스트/딕트 필드는 JSON 문자열로 변환 (SQLite 호환)
+        for key, val in data.items():
+            if isinstance(val, (list, dict)):
+                data[key] = json.dumps(val, ensure_ascii=False)
+        self.db["papers"].upsert(data, pk="paper_id", alter=True)
+        logger.debug(f"논문 저장: {data.get('title', '')[:50]}")
 
     def upsert_reviewer(self, reviewer_data: dict):
         """리뷰어 정보 upsert"""
