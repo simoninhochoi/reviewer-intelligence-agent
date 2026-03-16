@@ -75,6 +75,192 @@ with st.sidebar:
 # ──────────────────────────────────────────────
 
 
+def render_profile(profile_text: str):
+    """프로필 텍스트(JSON 또는 마크다운)를 카드 형태로 시각화"""
+    import re
+
+    # JSON 파싱 시도
+    profile_data = None
+    try:
+        profile_data = json.loads(profile_text)
+    except (json.JSONDecodeError, TypeError):
+        # JSON 코드블록 안에 있는 경우
+        json_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", profile_text, re.DOTALL)
+        if json_match:
+            try:
+                profile_data = json.loads(json_match.group(1))
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+    if profile_data and isinstance(profile_data, dict):
+        _render_profile_cards(profile_data)
+    else:
+        # JSON 파싱 실패 시 마크다운 텍스트를 섹션별로 분리해서 표시
+        _render_profile_markdown(profile_text)
+
+
+def _render_profile_cards(data: dict):
+    """JSON 프로필 데이터를 카드 형태로 렌더링"""
+
+    # ── 핵심 이론 프레임워크 ──
+    frameworks = data.get("core_theoretical_frameworks", [])
+    if frameworks:
+        st.markdown("#### 🧠 핵심 이론 프레임워크")
+        cols = st.columns(min(len(frameworks), 4))
+        for i, fw in enumerate(frameworks):
+            with cols[i % len(cols)]:
+                st.markdown(
+                    f'<div style="background:#e8f4f8; padding:12px; border-radius:8px; '
+                    f'border-left:4px solid #2196F3; margin-bottom:8px;">'
+                    f'<strong>{fw}</strong></div>',
+                    unsafe_allow_html=True,
+                )
+
+    # ── 방법론적 입장 ──
+    method = data.get("methodological_stance", {})
+    if method:
+        st.markdown("#### 🔬 방법론적 입장")
+        col1, col2 = st.columns(2)
+        with col1:
+            primary = method.get("primary_methods", [])
+            if primary:
+                st.markdown("**주요 방법론**")
+                for m in primary:
+                    st.markdown(f"- {m}")
+            epistem = method.get("epistemological_position", "")
+            if epistem:
+                st.markdown(f"**인식론적 위치**: {epistem}")
+        with col2:
+            prefs = method.get("data_preferences", [])
+            if prefs:
+                st.markdown("**데이터 선호**")
+                for p in prefs:
+                    st.markdown(f"- {p}")
+
+    # ── 핵심 개념 ──
+    concepts = data.get("key_concepts", [])
+    if concepts:
+        st.markdown("#### 💡 핵심 개념")
+        tags_html = " ".join(
+            f'<span style="background:#fff3e0; padding:6px 14px; border-radius:20px; '
+            f'margin:4px; display:inline-block; font-size:0.9em; '
+            f'border:1px solid #FFB74D;">{c}</span>'
+            for c in concepts
+        )
+        st.markdown(tags_html, unsafe_allow_html=True)
+        st.markdown("")  # 간격
+
+    # ── 지적 네트워크 ──
+    network = data.get("intellectual_network", {})
+    if network:
+        st.markdown("#### 🌐 지적 네트워크")
+        col1, col2 = st.columns(2)
+        with col1:
+            coauthors = network.get("frequent_coauthors", [])
+            if coauthors:
+                st.markdown("**주요 공저자**")
+                for a in coauthors[:8]:
+                    st.markdown(f"- 👤 {a}")
+        with col2:
+            cited = network.get("frequently_cited_scholars", [])
+            if cited:
+                st.markdown("**자주 인용하는 학자**")
+                for s in cited[:8]:
+                    st.markdown(f"- 📚 {s}")
+        lineage = network.get("intellectual_lineage", "")
+        if lineage:
+            st.caption(f"💬 학문적 계보: {lineage}")
+
+    # ── 비판 패턴 ──
+    critical = data.get("critical_patterns", {})
+    if critical:
+        st.markdown("#### ⚡ 비판 패턴")
+        criticisms = critical.get("common_criticisms", [])
+        blind_spots = critical.get("theoretical_blind_spots", [])
+        if criticisms:
+            for c in criticisms:
+                st.markdown(
+                    f'<div style="background:#fce4ec; padding:10px; border-radius:6px; '
+                    f'border-left:4px solid #e53935; margin-bottom:6px;">'
+                    f'⚠️ {c}</div>',
+                    unsafe_allow_html=True,
+                )
+        if blind_spots:
+            st.markdown("**이론적 사각지대**")
+            for b in blind_spots:
+                st.markdown(f"- 🔍 {b}")
+
+    # ── 연구 진화 ──
+    evolution = data.get("research_evolution", {})
+    if evolution:
+        st.markdown("#### 📈 연구 진화")
+        periods = [
+            ("🌱 초기", evolution.get("early_period", "")),
+            ("🌿 중기", evolution.get("middle_period", "")),
+            ("🌳 최근", evolution.get("recent_period", "")),
+        ]
+        for label, desc in periods:
+            if desc:
+                st.markdown(
+                    f'<div style="background:#f3e5f5; padding:10px; border-radius:6px; '
+                    f'margin-bottom:6px; border-left:4px solid #9C27B0;">'
+                    f'<strong>{label}</strong>: {desc}</div>',
+                    unsafe_allow_html=True,
+                )
+
+    # ── 예상 리뷰 우려사항 ──
+    concerns = data.get("likely_review_concerns", [])
+    if concerns:
+        st.markdown("#### 🎯 예상 리뷰 우려사항")
+        for c in concerns:
+            if isinstance(c, dict):
+                severity = c.get("severity", "minor")
+                color = "#e53935" if severity == "major" else "#FF9800"
+                badge = "🔴 Major" if severity == "major" else "🟡 Minor"
+                concern_text = c.get("concern", "")
+                typical = c.get("typical_comment", "")
+                st.markdown(
+                    f'<div style="background:#fff; padding:12px; border-radius:8px; '
+                    f'border:1px solid #e0e0e0; margin-bottom:8px;">'
+                    f'<span style="background:{color}; color:white; padding:2px 8px; '
+                    f'border-radius:4px; font-size:0.8em;">{badge}</span> '
+                    f'<strong>{concern_text}</strong>'
+                    f'{"<br><em style=\"color:#666;\">&quot;" + typical + "&quot;</em>" if typical else ""}'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(f"- {c}")
+
+
+def _render_profile_markdown(text: str):
+    """마크다운 텍스트를 섹션별로 나눠서 expander로 표시"""
+    import re
+    # 섹션 헤더(##, ###, 숫자.)로 분리
+    sections = re.split(r'\n(?=#{1,3}\s|(?:\d+\.)\s)', text.strip())
+
+    if len(sections) <= 1:
+        # 분리가 안 되면 그냥 보여주되 코드블록 정리
+        cleaned = re.sub(r'```json\s*', '', text)
+        cleaned = re.sub(r'```\s*', '', cleaned)
+        st.markdown(cleaned)
+        return
+
+    for section in sections:
+        section = section.strip()
+        if not section:
+            continue
+        # 첫 줄을 제목으로
+        lines = section.split('\n', 1)
+        title = lines[0].strip('#').strip()
+        body = lines[1].strip() if len(lines) > 1 else ""
+        if body:
+            with st.expander(title, expanded=True):
+                st.markdown(body)
+        else:
+            st.markdown(f"**{title}**")
+
+
 def check_api_key() -> bool:
     """API 키가 설정되어 있는지 확인"""
     import os
@@ -192,7 +378,7 @@ def page_profile():
                 # 프로필 본문
                 if selected.get("profile_json"):
                     st.subheader("리뷰어 프로필")
-                    st.markdown(selected["profile_json"])
+                    render_profile(selected["profile_json"])
 
                 # 논문 목록
                 if papers:
@@ -238,7 +424,7 @@ def page_profile():
 
                     # 프로필 표시
                     st.subheader("리뷰어 프로필")
-                    st.markdown(result["profile"])
+                    render_profile(result["profile"])
 
                     # 논문 목록
                     papers = result.get("papers", [])
