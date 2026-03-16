@@ -219,16 +219,19 @@ def _render_profile_cards(data: dict):
                 badge = "🔴 Major" if severity == "major" else "🟡 Minor"
                 concern_text = c.get("concern", "")
                 typical = c.get("typical_comment", "")
-                st.markdown(
-                    f'<div style="background:#fff; padding:12px; border-radius:8px; '
-                    f'border:1px solid #e0e0e0; margin-bottom:8px;">'
+                typical_html = ""
+                if typical:
+                    typical_html = '<br><em style="color:#666;">&quot;' + typical + '&quot;</em>'
+                card_html = (
+                    '<div style="background:#fff; padding:12px; border-radius:8px; '
+                    'border:1px solid #e0e0e0; margin-bottom:8px;">'
                     f'<span style="background:{color}; color:white; padding:2px 8px; '
                     f'border-radius:4px; font-size:0.8em;">{badge}</span> '
                     f'<strong>{concern_text}</strong>'
-                    f'{"<br><em style=\"color:#666;\">&quot;" + typical + "&quot;</em>" if typical else ""}'
-                    f'</div>',
-                    unsafe_allow_html=True,
+                    f'{typical_html}'
+                    '</div>'
                 )
+                st.markdown(card_html, unsafe_allow_html=True)
             else:
                 st.markdown(f"- {c}")
 
