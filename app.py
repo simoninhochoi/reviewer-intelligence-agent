@@ -64,6 +64,7 @@ with st.sidebar:
         [
             "🏠 홈",
             "👤 리뷰어 프로파일링",
+            "📚 문서 업로드 & 검색",
             "🚀 전체 파이프라인",
             "💰 비용 리포트",
         ],
@@ -402,6 +403,145 @@ def page_cost():
         st.rerun()
 
 
+def page_documents():
+    st.title("📚 문서 업로드 & 검색")
+    st.markdown(
+        "리뷰어의 저서·논문을 직접 업로드하여 벡터 DB에 저장하고, "
+        "시맨틱 검색으로 관련 내용을 찾습니다."
+    )
+
+    tab_upload, tab_search, tab_manage = st.tabs([
+        "📤 문서 업로드",
+        "🔍 시맨틱 검색",
+        "⚙️ 관리",
+    ])
+
+    from src.vectordb.chroma_store import ChromaStore
+    store = ChromaStore()
+
+    # ── 업로드 탭 ──
+    with tab_upload:
+        reviewer_name = st.text_input(
+            "리뷰어 이름",
+            placeholder="예: Christian Reus-Smit",
+            key="doc_reviewer",
+        )
+
+        upload_method = st.radio(
+            "업로드 방식",
+            ["파일 업로드", "텍스트 직접 입력"],
+            horizontal=True,
+        )
+
+        if upload_method == "파일 업로드":
+            uploaded_files = st.file_uploader(
+                "논문/저서 파일 (여러 개 가능)",
+                type=["pdf", "docx", "txt"],
+                accept_multiple_files=True,
+                help="PDF, DOCX, TXT 형식 지원",
+            )
+
+            col1, col2 = st.columns(2)
+            with col1:
+                doc_title = st.text_input("문서 제목 (선택)", key="doc_title")
+            with col2:
+                doc_year = st.text_input("출판 연도 (선택)", key="doc_year")
+
+            if st.button("벡터 DB에 저장", type="primary", disabled=not (reviewer_name and uploaded_files)):
+                for uploaded_file in uploaded_files:
+                    file_path = save_uploaded_file(uploaded_file)
+                    metadata = {"title": doc_title or uploaded_file.name}
+                    if doc_year:
+                        metadata["year"] = doc_year
+
+                    with st.spinner(f"{uploaded_file.name} 처리 중..."):
+                        chunk_count = store.add_document(
+                            reviewer_name=reviewer_name,
+                            file_path=file_path,
+                            metadata=metadata,
+                        )
+                    st.success(f"✅ {uploaded_file.name} → {chunk_count}개 청크 저장 완료")
+
+        else:  # 텍스트 직접 입력
+            text_input = st.text_area(
+                "텍스트 입력",
+                height=300,
+                placeholder="논문 또는 저서의 텍스트를 붙여넣으세요...",
+            )
+            text_title = st.text_input("문서 제목 (선택)", key="text_title")
+
+            if st.button("벡터 DB에 저장", type="primary", disabled=not (reviewer_name and text_input), key="save_text"):
+                metadata = {}
+                if text_title:
+                    metadata["title"] = text_title
+
+                with st.spinner("텍스트 처리 중..."):
+                    chunk_count = store.add_text(
+                        reviewer_name=reviewer_name,
+                        text=text_input,
+                        metadata=metadata,
+                    )
+                st.success(f"✅ {chunk_count}개 청크 저장 완료")
+
+    # ── 검색 탭 ──
+    with tab_search:
+        search_reviewer = st.text_input(
+            "리뷰어 이름",
+            placeholder="예: Christian Reus-Smit",
+            key="search_reviewer",
+        )
+        search_query = st.text_input(
+            "검색 쿼리",
+            placeholder="예: constructivism in international relations",
+        )
+        top_k = st.slider("결과 수", min_value=1, max_value=20, value=5)
+
+        if st.button("검색", type="primary", disabled=not (search_reviewer and search_query)):
+            with st.spinner("검색 중..."):
+                results = store.search(
+                    reviewer_name=search_reviewer,
+                    query=search_query,
+                    top_k=top_k,
+                )
+
+            if results:
+                st.success(f"{len(results)}개 결과 발견")
+                for i, r in enumerate(results, 1):
+                    distance = r.get("distance", 0)
+                    similarity = max(0, 1 - distance) if distance else 0
+                    title = r["metadata"].get("title", "")
+                    header = f"**#{i}** — 유사도: {similarity:.2%}"
+                    if title:
+                        header += f" | {title}"
+
+                    with st.expander(header, expanded=(i <= 3)):
+                        st.markdown(r["text"])
+                        st.caption(f"메타데이터: {r['metadata']}")
+            else:
+                st.warning("검색 결과가 없습니다. 먼저 문서를 업로드하세요.")
+
+    # ── 관리 탭 ──
+    with tab_manage:
+        reviewers = store.list_reviewers()
+
+        if reviewers:
+            st.subheader(f"등록된 리뷰어 ({len(reviewers)}명)")
+            for rev in reviewers:
+                stats = store.get_stats(rev)
+                col1, col2, col3 = st.columns([3, 2, 1])
+                with col1:
+                    st.write(f"**{rev}**")
+                with col2:
+                    st.write(f"{stats['total_chunks']}개 청크")
+                with col3:
+                    if st.button("삭제", key=f"del_{rev}"):
+                        store.delete_reviewer(rev)
+                        st.success(f"{rev} 컬렉션 삭제됨")
+                        st.rerun()
+        else:
+            st.info("등록된 리뷰어가 없습니다. 문서를 업로드하세요.")
+
+
 # ──────────────────────────────────────────────
 # Router
 # ──────────────────────────────────────────────
@@ -410,6 +550,8 @@ if page == "🏠 홈":
     page_home()
 elif page == "👤 리뷰어 프로파일링":
     page_profile()
+elif page == "📚 문서 업로드 & 검색":
+    page_documents()
 elif page == "🚀 전체 파이프라인":
     page_pipeline()
 elif page == "💰 비용 리포트":
