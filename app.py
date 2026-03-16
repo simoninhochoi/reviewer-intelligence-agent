@@ -148,47 +148,114 @@ def page_home():
 
 def page_profile():
     st.title("👤 리뷰어 프로파일링")
-    st.markdown("Semantic Scholar에서 리뷰어의 논문을 검색하고 학술적 프로필을 구축합니다.")
 
-    if not check_api_key():
-        return
+    from src.acquisition.paper_store import PaperStore
+    paper_store = PaperStore()
 
-    reviewer_name = st.text_input(
-        "리뷰어 이름",
-        placeholder="예: Christian Reus-Smit",
-    )
+    tab_existing, tab_new = st.tabs(["📋 기존 프로필 조회", "➕ 새 프로파일 생성"])
 
-    if st.button("프로파일 생성", type="primary", disabled=not reviewer_name):
-        with st.spinner("Semantic Scholar 검색 중..."):
-            try:
-                from src.pipeline import ReviewerIntelligencePipeline
+    # ── 기존 프로필 조회 탭 ──
+    with tab_existing:
+        existing_reviewers = paper_store.all_reviewers()
 
-                pipeline = ReviewerIntelligencePipeline()
-                result = pipeline._step_profiling(reviewer_name)
+        if existing_reviewers:
+            reviewer_names = [r["name"] for r in existing_reviewers if r.get("name")]
+            selected_name = st.selectbox(
+                "프로파일링된 리뷰어 선택",
+                reviewer_names,
+                key="profile_select",
+            )
+            selected = next(
+                (r for r in existing_reviewers if r["name"] == selected_name), None
+            )
 
-                st.success("프로파일 생성 완료!")
+            if selected:
+                # 기본 정보
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("H-Index", selected.get("h_index", "N/A"))
+                with col2:
+                    affiliations = selected.get("affiliations", "")
+                    if affiliations and affiliations.startswith("["):
+                        import json
+                        try:
+                            affiliations = ", ".join(json.loads(affiliations))
+                        except Exception:
+                            pass
+                    st.metric("소속", affiliations or "N/A")
+                with col3:
+                    papers = paper_store.get_reviewer_papers(selected["reviewer_id"])
+                    st.metric("수집된 논문", f"{len(papers)}편")
 
-                # 프로필 표시
-                st.subheader("리뷰어 프로필")
-                st.markdown(result["profile"])
+                st.divider()
+
+                # 프로필 본문
+                if selected.get("profile_json"):
+                    st.subheader("리뷰어 프로필")
+                    st.markdown(selected["profile_json"])
 
                 # 논문 목록
-                papers = result.get("papers", [])
                 if papers:
-                    st.subheader(f"수집된 논문 ({len(papers)}편)")
-                    for i, p in enumerate(papers[:20], 1):
-                        title = p.get("title", "제목 없음")
-                        year = p.get("year", "")
-                        citations = p.get("citation_count", 0)
-                        st.markdown(
-                            f"**{i}.** {title} ({year}) — 인용 {citations}회"
-                        )
+                    with st.expander(f"수집된 논문 목록 ({len(papers)}편)", expanded=False):
+                        for i, p in enumerate(papers[:30], 1):
+                            title = p.get("title", "제목 없음")
+                            year = p.get("year", "")
+                            citations = p.get("citation_count", 0)
+                            st.markdown(
+                                f"**{i}.** {title} ({year}) — 인용 {citations}회"
+                            )
 
-                # 세션에 저장
-                st.session_state["profile_result"] = result
+                # 벡터 DB 통계
+                from src.vectordb.chroma_store import ChromaStore
+                chroma = ChromaStore()
+                stats = chroma.get_stats(selected_name)
+                if stats["total_chunks"] > 0:
+                    st.info(f"📚 업로드된 문서: {stats['total_chunks']}개 청크 (벡터 DB)")
+        else:
+            st.info("프로파일링된 리뷰어가 없습니다. '새 프로파일 생성' 탭에서 시작하세요.")
 
-            except Exception as e:
-                st.error(f"오류 발생: {e}")
+    # ── 새 프로파일 생성 탭 ──
+    with tab_new:
+        st.markdown("Semantic Scholar에서 리뷰어의 논문을 검색하고 학술적 프로필을 구축합니다.")
+
+        if not check_api_key():
+            return
+
+        reviewer_name = st.text_input(
+            "리뷰어 이름",
+            placeholder="예: Christian Reus-Smit",
+        )
+
+        if st.button("프로파일 생성", type="primary", disabled=not reviewer_name):
+            with st.spinner("Semantic Scholar 검색 중..."):
+                try:
+                    from src.pipeline import ReviewerIntelligencePipeline
+
+                    pipeline = ReviewerIntelligencePipeline()
+                    result = pipeline._step_profiling(reviewer_name)
+
+                    st.success("프로파일 생성 완료!")
+
+                    # 프로필 표시
+                    st.subheader("리뷰어 프로필")
+                    st.markdown(result["profile"])
+
+                    # 논문 목록
+                    papers = result.get("papers", [])
+                    if papers:
+                        st.subheader(f"수집된 논문 ({len(papers)}편)")
+                        for i, p in enumerate(papers[:20], 1):
+                            title = p.get("title", "제목 없음")
+                            year = p.get("year", "")
+                            citations = p.get("citation_count", 0)
+                            st.markdown(
+                                f"**{i}.** {title} ({year}) — 인용 {citations}회"
+                            )
+
+                    st.session_state["profile_result"] = result
+
+                except Exception as e:
+                    st.error(f"오류 발생: {e}")
 
 
 def page_pipeline():
